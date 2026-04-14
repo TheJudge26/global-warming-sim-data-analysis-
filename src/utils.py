@@ -1,5 +1,3 @@
-# src/utils.py
-
 # DONT TOUCH 
 import pandas as pd
 from src.config import CLEAN_DATA_PATH
