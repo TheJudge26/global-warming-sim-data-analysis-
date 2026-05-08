@@ -2,12 +2,53 @@ import streamlit as st
 import pandas as pd
 import joblib
 import json
+import plotly.express as px
+import plotly.graph_objects as go
+import pycountry_convert as pc
+from src.config import CONTINENTS
 from src.api_service import get_live_country_data
+
+def get_continent(country_name):
+    try:
+        country_code = pc.country_name_to_country_alpha2(country_name)
+        continent_code = pc.country_alpha2_to_continent_code(country_code)
+
+        mapping = {
+            "AF": "Africa",
+            "AS": "Asia",
+            "EU": "Europe",
+            "NA": "North America",
+            "SA": "South America",
+            "OC": "Oceania"
+        }
+
+        return mapping.get(continent_code, "Other")
+    except:
+        return "Other"
+    
+def get_risk_level(value):
+    if value < 1.0:
+        return "🟢 Safe"
+    elif value < 1.5:
+        return "🟡 Moderate"
+    else:
+        return "🔴 Dangerous"
+        
+m = joblib.load("models/prophet_model.pkl")
 
 # --- APP CONFIGURATION ---
 st.set_page_config(page_title="Supreme Climate AI", page_icon="🌍")
 st.title("🌍 Live Climate AI Predictor")
 st.write("Enter a country code to simulate a world living exactly like that country.")
+
+st.markdown("""
+<style>
+[data-testid="stMetricValue"] {
+    font-size: 26px;
+    font-weight: bold;
+}
+</style>
+""", unsafe_allow_html=True)
 
 @st.cache_resource
 def load_brain():
@@ -25,6 +66,13 @@ nn_model, scaler = load_brain()
 
 st.markdown("---")
 country_code = st.text_input("Enter 3-letter Country Code (e.g., EGY, USA, BRA, ZAF):", value="EGY").upper()
+region = st.selectbox(
+    "Select Region (Optional)",
+    ["Global"] + CONTINENTS
+)
+
+supreme_df = pd.read_csv('data/processed/supreme_dataset.csv')
+supreme_df["continent"] = supreme_df["Real_Country_Name"].apply(get_continent)
 
 if st.button("Run Simulation"):
     if nn_model and scaler:
@@ -32,6 +80,17 @@ if st.button("Run Simulation"):
             
             # 1. FETCH LIVE DATA
             live_df = get_live_country_data(country_code)
+            # Get the continent of the selected country
+            country_continent = get_continent(country_code)
+
+            if region != "Global" and country_continent != region:
+                st.error(f"❌ Invalid selection: {country_code} belongs to {country_continent}, not {region}")
+                st.stop()
+
+            if region == "Global":
+                region_df = supreme_df
+            else:
+                region_df = supreme_df[supreme_df["continent"] == region]
             
             # 2. POPULATION SAFETY VALVE
             # If the API returns 0, we must stop to prevent division-by-zero crashes
@@ -68,7 +127,8 @@ if st.button("Run Simulation"):
             
             # 5. FETCH AND SCALE HISTORICAL GHG
             try:
-                supreme_df = pd.read_csv('data/processed/supreme_dataset.csv')
+                
+                region_summary = region_df.groupby("continent", as_index=False)["CO2_Emissions"].mean()
                 # Use the new mapping column we created in the Refinery
                 country_history = supreme_df[supreme_df['iso_code'] == country_code]
                 
@@ -97,6 +157,8 @@ if st.button("Run Simulation"):
             
             X_scaled = scaler.transform(ai_input)
             prediction = nn_model.predict(X_scaled)[0]
+            risk = get_risk_level(prediction)
+
 
             # 7. DISPLAY RESULTS
             st.markdown("---")
@@ -106,6 +168,123 @@ if st.button("Run Simulation"):
                 st.error(f"🌡️ Catastrophic Warning: Projected Global Temperature Anomaly is **+{prediction:.2f}°C** (Fails Paris Agreement!)")
             else:
                 st.success(f"🌤️ Safe Zone: Projected Global Temperature Anomaly is **+{prediction:.2f}°C** (Passes Paris Agreement!)")
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=prediction,
+                title={'text': "Global Temperature Rise"},
+                gauge={
+                    'axis': {'range': [0, 4]},
+                    'steps': [
+                        {'range': [0, 1], 'color': "lightgreen"},
+                        {'range': [1, 1.5], 'color': "yellow"},
+                        {'range': [1.5, 2], 'color': "orange"},
+                        {'range': [2, 4], 'color': "red"}
+                    ]
+                }
+            ))
+
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("---")
+            st.subheader("🔍 What is driving the prediction? (Explainable AI)")
+
+            importance_df = pd.read_csv("data/processed/feature_importance.csv")
+
+            fig_imp = px.bar(
+                importance_df,
+                x="Feature",
+                y="Importance",
+                title="Feature Impact on Climate Prediction"
+            )
+
+            st.plotly_chart(fig_imp, use_container_width=True)
+            st.subheader("📈 Future Climate Forecast (20-Year Projection)")
+
+            # last known year in training data
+            last_year = m.history['ds'].dt.year.max()
+
+            # predict 20 years into future
+            future = m.make_future_dataframe(periods=20, freq='YE')
+            forecast = m.predict(future)
+
+            fig_forecast = px.line(
+                forecast,
+                x='ds',
+                y='yhat',
+                title='20-Year Global Temperature Forecast',
+                labels={
+                    "ds": "Year",
+                    "yhat": "Temperature Anomaly (°C)"
+                }
+            )
+
+            fig_forecast.update_layout(
+                xaxis_title="Year",
+                yaxis_title="Temperature Anomaly (°C)"
+            )
+
+            # mark current boundary
+            fig_forecast.add_vline(
+                x=pd.Timestamp(str(last_year)),
+                line_width=2,
+                line_dash="dash",
+                line_color="red"
+            )
+
+            st.plotly_chart(fig_forecast, use_container_width=True)
+
+            st.subheader("🌍 Global Climate Safety Ranking")
+
+            # Create ranking table from dataset
+            ranking_df = supreme_df.groupby("iso_code", as_index=False).agg({
+                "Average_Temperature": "mean",
+                "CO2_Emissions": "mean",
+                "Total_GHG": "mean"
+            })
+
+            ranking_df["risk_score"] = (
+            ranking_df["CO2_Emissions"] * 0.4 +
+            ranking_df["Total_GHG"] * 0.3 +
+            ranking_df["Average_Temperature"] * 0.3
+            )
+
+            ranking_df = ranking_df.sort_values("risk_score")
+            selected_country = ranking_df[ranking_df["iso_code"] == country_code]
+
+            if not selected_country.empty:
+                selected_score = selected_country["risk_score"].values[0]
+
+                safer_countries = ranking_df[ranking_df["risk_score"] < selected_score]
+
+                st.subheader("Countries Safer Than Selected")
+
+            st.write("Top 10 safest countries (based on historical climate stability):")
+            st.dataframe(ranking_df.head(10))
+
+            st.subheader(f"🌍 Regional Climate Overview: {region}")
+            # st.write("### Key Regional Metrics")
+
+            # col1, col2, col3 = st.columns(3)
+
+            # col1.metric("Avg CO2", f"{region_df['CO2_Emissions'].mean():,.2f}")
+
+            # col2.metric("Avg Temp", f"{region_df['Average_Temperature'].mean():.2f}")
+
+            st.subheader("📊 CO2 Emissions by Region")
+
+            region_summary = region_df.groupby("continent")["CO2_Emissions"].mean().reset_index()
+
+            fig_region = px.bar(
+                region_summary,
+                x="continent",
+                y="CO2_Emissions",
+                title="Average CO2 Emissions by Region"
+            )
+
+            st.plotly_chart(fig_region, use_container_width=True)
+
+            # col3.metric("Avg GHG", f"{region_df['Total_GHG'].mean():,.2f}")
 
 st.markdown("---")
+
 st.caption("Intelligence provided by OWID, World Bank, and Supreme Neural Networks")
+st.markdown("---")
