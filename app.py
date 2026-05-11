@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import pycountry_convert as pc
 from src.config import CONTINENTS
 from src.api_service import get_live_country_data
-
+#to
 def get_continent(country_name):
     try:
         country_code = pc.country_name_to_country_alpha2(country_name)
