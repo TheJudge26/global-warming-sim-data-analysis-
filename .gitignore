@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# Models
+models/*.pkl
+
+# Forecast outputs
+data/processed/*.csv
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
