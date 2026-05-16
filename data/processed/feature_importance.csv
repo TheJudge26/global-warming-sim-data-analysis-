@@ -1,0 +1,14 @@
+Feature,Importance
+Temp_Moving_Avg,1319
+rolling_temp_5,1219
+rolling_co2_5,652
+Year,643
+temperature_anomaly_lag_3,630
+CO2_Emissions,624
+temperature_anomaly_lag_1,620
+co2_lag_1,599
+temperature_anomaly_lag_5,579
+Population,578
+rolling_temp_3,536
+Total_GHG,530
+temp_trend_5,468

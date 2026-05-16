@@ -2,12 +2,6 @@
 __pycache__/
 *.pyc
 
-# Models
-models/*.pkl
-
-# Forecast outputs
-data/processed/*.csv
-
 # Jupyter
 .ipynb_checkpoints/
 
