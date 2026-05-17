@@ -41,20 +41,20 @@ st.markdown("""
 @st.cache_resource
 def load_models():
     """
-    Loads all AI models and scalers only once.
+    Loads only the Neural Network and Scaler. 
+    (Prophet is bypassed because we read the CSV directly).
     """
-
     try:
-        lgbm_model = joblib.load("models/supreme_lgbm_model.pkl")
+        nn_model = joblib.load("models/supreme_nn_model.pkl")
         scaler = joblib.load("models/supreme_scaler.pkl")
-        prophet_model = joblib.load("models/prophet_model.pkl")
-
-        return lgbm_model, scaler, prophet_model
+        return nn_model, scaler
 
     except FileNotFoundError as e:
         st.error(f"❌ Missing model file: {e}")
         st.stop()
 
+# Load them properly into the app (No 'm' variable anymore!)
+nn_model, scaler = load_models()
 
 @st.cache_data
 def load_dataset():
@@ -83,7 +83,7 @@ def load_feature_importance():
 # LOAD RESOURCES
 # =========================================================
 
-lgbm_model, scaler, m = load_models()
+nn_model, scaler = load_models()
 
 supreme_df = load_dataset()
 
@@ -150,41 +150,13 @@ FEATURE_COLUMNS = [
 
 
 # =========================================================
-# COUNTRY CONFIG
+# COUNTRY CONFIG (Dynamically Unlocked)
 # =========================================================
 
-COUNTRY_TO_ISO = {
-    "Egypt": "EGY",
-    "United States": "USA",
-    "Brazil": "BRA",
-    "Canada": "CAN",
-    "India": "IND",
-    "China": "CHN",
-    "Australia": "AUS",
-    "Russia": "RUS"
-}
-
-SUPPORTED_COUNTRIES = [
-    "Egypt",
-    "United States",
-    "Brazil",
-    "Canada",
-    "India",
-    "China",
-    "Australia",
-    "Russia"
-]
-
-DISPLAY_TO_DATASET = {
-    "Egypt": "Egypt",
-    "United States": "USA",
-    "Brazil": "Brazil",
-    "Canada": "Canada",
-    "India": "India",
-    "China": "China",
-    "Australia": "Australia",
-    "Russia": "Russia"
-}
+# Extract all valid countries directly from the true science dataset!
+valid_countries = supreme_df.dropna(subset=['iso_code', 'Real_Country_Name']).drop_duplicates(subset=['Real_Country_Name'])
+COUNTRY_TO_ISO = dict(zip(valid_countries['Real_Country_Name'], valid_countries['iso_code']))
+SUPPORTED_COUNTRIES = sorted(list(COUNTRY_TO_ISO.keys()))
 
 
 # =========================================================
@@ -223,11 +195,9 @@ if st.button("Run Simulation"):
         # COUNTRY MAPPING
         # =================================================
 
-        country_name = DISPLAY_TO_DATASET[country_name_input]
-
-        country_code = COUNTRY_TO_ISO.get(country_name_input)
-
-        country_continent = get_continent(country_name_input)
+        country_name = country_name_input
+        country_code = COUNTRY_TO_ISO[country_name]
+        country_continent = get_continent(country_name)
 
 
         # =================================================
@@ -280,36 +250,32 @@ if st.button("Run Simulation"):
 
 
         # =================================================
-        # HANDLE CO2 FALLBACK
+        # HANDLE CO2 FALLBACK (Smart Historical Backup)
         # =================================================
 
         if (
             'CO2_Emissions' not in live_df.columns
             or live_df['CO2_Emissions'].iloc[0] == 0
         ):
+            st.warning("⚠️ Live CO2 API lagging. Pulling the most recent profile from historical records...")
+            
+            # Look up the country in our supreme dataset
+            country_history = supreme_df[supreme_df['iso_code'] == country_code]
+            
+            if not country_history.empty:
+                # Get their most recent recorded year
+                latest_row = country_history.sort_values('Year').iloc[-1]
+                hist_co2_mt = latest_row['CO2_Emissions']
+                hist_pop = latest_row['Population']
+                
+                # Calculate per capita in Million Tonnes (MT)
+                per_capita_mt = hist_co2_mt / hist_pop if hist_pop > 0 else (4.5 / 1_000_000)
+            else:
+                # Global average fallback (4.5 tonnes per person = 0.0000045 MT)
+                per_capita_mt = 4.5 / 1_000_000
 
-            try:
-
-                with open('models/carbon_profiles.json', 'r') as f:
-                    profiles = json.load(f)
-
-                multiplier = profiles.get(country_name, 4.5)
-
-                st.warning(
-                    f"⚠️ Live CO2 lagging. "
-                    f"Using historical profile: "
-                    f"{multiplier:.2f} tons/capita."
-                )
-
-                live_df['CO2_Emissions'] = (
-                    live_df['Population'] * multiplier
-                ) / 1000
-
-            except FileNotFoundError:
-
-                st.error("❌ carbon_profiles.json missing.")
-                st.stop()
-
+            # Inject the calculated historical emissions into the live dataframe
+            live_df['CO2_Emissions'] = live_df['Population'].iloc[0] * per_capita_mt
 
         # =================================================
         # DISPLAY LIVE DATA
@@ -318,128 +284,50 @@ if st.button("Run Simulation"):
         st.success("✅ Data Fetched Successfully!")
         st.dataframe(live_df)
 
-
-        # =================================================
-        # GLOBAL WHAT-IF SIMULATION
-        # =================================================
-
-        country_co2_tonnes = (
-            live_df['CO2_Emissions'].iloc[0] * 1000
-        )
-
-        per_capita_co2 = (
-            country_co2_tonnes / country_pop
-        )
-
-        global_population_2026 = 8_000_000_000
-
-        simulated_global_co2 = (
-            per_capita_co2 * global_population_2026
-        )
-
-        st.info(
-            f"🔍 Simulation: If the entire planet emitted "
-            f"carbon like {country_name_input}, "
-            f"global CO2 would become "
-            f"{simulated_global_co2:,.0f} tonnes."
-        )
-
-
-        # =================================================
-        # HISTORICAL GHG
-        # =================================================
-
-        country_history = supreme_df[
-            supreme_df['Real_Country_Name'] == country_name
-        ]
-
-        if not country_history.empty:
-
-            latest_row = (
-                country_history
-                .sort_values('Year')
-                .iloc[-1]
-            )
-
-            hist_ghg = latest_row['Total_GHG']
-            hist_pop = latest_row['Population']
-
-            ghg_per_capita = hist_ghg / (
-                hist_pop if hist_pop > 0 else 1
-            )
-
-            simulated_global_ghg = (
-                ghg_per_capita * global_population_2026
-            )
-
+# 4. GLOBAL "WHAT IF" SIMULATION
+        raw_api_co2 = live_df['CO2_Emissions'].iloc[0]
+        
+        # 🛡️ BULLETPROOF UNIT CHECK: 
+        # If the API gave us raw tonnes (e.g. 5,000,000,000), convert to MT. 
+        # If it's already MT (e.g. 5000), leave it alone.
+        if raw_api_co2 > 1_000_000:
+            country_co2_mt = raw_api_co2 / 1_000_000
         else:
-            simulated_global_ghg = 0
+            country_co2_mt = raw_api_co2
 
+        per_capita_mt = country_co2_mt / country_pop
+        global_population_2026 = 8000000000
+        
+        # Emissions for ONE year (in Million Tonnes)
+        ai_co2_emissions = per_capita_mt * global_population_2026
+        
+        # Text display requires Raw Tonnes
+        display_tonnes = ai_co2_emissions * 1_000_000
 
-        # =================================================
-        # FEATURE ENGINEERING
-        # =================================================
+        st.info(f"🔍 **Simulation:** If the entire planet emitted carbon like **{country_code}**, global CO2 would be **{display_tonnes:,.0f} tonnes per year**.")
 
-        country_rows = supreme_df[
-            supreme_df['Real_Country_Name'] == country_name
-        ]
+        # 5. FETCH HISTORICAL CUMULATIVE CO2
+        last_year = supreme_df['Year'].max()
+        if 'Cumulative_CO2' in supreme_df.columns:
+            current_global_cumulative = supreme_df[supreme_df['Year'] == last_year]['Cumulative_CO2'].sum()
+        else:
+            current_global_cumulative = supreme_df['CO2_Emissions'].sum()
 
-        if country_rows.empty:
-            st.error(f"No historical data for {country_name}")
-            st.stop()
+        # 🚀 THE 10-YEAR PHYSICS FIX
+        simulated_global_cumulative = current_global_cumulative + (ai_co2_emissions * 10)
 
-        latest_features = (
-            country_rows
-            .sort_values("Year")
-            .iloc[-1]
-        )
-
-        ai_input = pd.DataFrame([{
-            "Year": 2026,
-            "CO2_Emissions": simulated_global_co2,
-            "Population": global_population_2026,
-            "Total_GHG": simulated_global_ghg,
-
-            "Temp_Moving_Avg":
-                latest_features["Temp_Moving_Avg"],
-
-            "temperature_anomaly_lag_1":
-                latest_features["temperature_anomaly_lag_1"],
-
-            "temperature_anomaly_lag_3":
-                latest_features["temperature_anomaly_lag_3"],
-
-            "temperature_anomaly_lag_5":
-                latest_features["temperature_anomaly_lag_5"],
-
-            "co2_lag_1":
-                latest_features["co2_lag_1"],
-
-            "rolling_temp_3":
-                latest_features["rolling_temp_3"],
-
-            "rolling_temp_5":
-                latest_features["rolling_temp_5"],
-
-            "rolling_co2_5":
-                latest_features["rolling_co2_5"],
-
-            "temp_trend_5":
-                latest_features["temp_trend_5"]
-        }])
-
-
-        # =================================================
-        # AI PREDICTION
-        # =================================================
-
-        X_scaled = scaler.transform(
-            ai_input[FEATURE_COLUMNS]
-        )
-
-        prediction = lgbm_model.predict(X_scaled)[0]
-
+        # 6. SUPREME AI PREDICTION
+        ai_input = pd.DataFrame([[
+            2036, 
+            ai_co2_emissions, 
+            simulated_global_cumulative, 
+            global_population_2026
+        ]], columns=['Year', 'CO2_Emissions', 'Cumulative_CO2', 'Population'])
+            
+        X_scaled = scaler.transform(ai_input)
+        prediction = nn_model.predict(X_scaled)[0]
         risk = get_risk_level(prediction)
+
 
 
         # =================================================
@@ -473,29 +361,29 @@ if st.button("Run Simulation"):
 
 
         # =================================================
-        # GAUGE CHART
+        # GAUGE CHART (Zoomed in for scientific sensitivity)
         # =================================================
 
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=prediction,
 
-            title={'text': "Global Temperature Rise"},
+            title={'text': "Global Temperature Rise (°C)"},
 
             gauge={
-                'axis': {'range': [0, 4]},
+                'axis': {'range': [1.0, 2.5]}, # 🚀 ZOOMED IN!
 
                 'steps': [
-                    {'range': [0, 1], 'color': "lightgreen"},
-                    {'range': [1, 1.5], 'color': "yellow"},
-                    {'range': [1.5, 2], 'color': "orange"},
-                    {'range': [2, 4], 'color': "red"}
-                ]
+                    {'range': [1.0, 1.4], 'color': "lightgreen"},
+                    {'range': [1.4, 1.6], 'color': "yellow"},
+                    {'range': [1.6, 2.0], 'color': "orange"},
+                    {'range': [2.0, 2.5], 'color': "red"}
+                ],
+                'bar': {'color': "black"} # Makes the needle easier to see
             }
         ))
 
         st.plotly_chart(fig, use_container_width=True)
-
 
         # =================================================
         # EXPLAINABLE AI
@@ -526,18 +414,14 @@ if st.button("Run Simulation"):
         # FORECASTING
         # =================================================
 
-        st.subheader(
-            "📈 Future Climate Forecast (20 Years)"
-        )
 
-        last_year = m.history['ds'].dt.year.max()
+        st.subheader("📈 Future Climate Forecast (20 Years)")
 
-        future = m.make_future_dataframe(
-            periods=20,
-            freq='YE'
-        )
-
-        forecast = m.predict(future)
+        # 🚀 THE FIX: Read the pre-calculated forecast from your data pipeline!
+        forecast = pd.read_csv("data/processed/future_forecast.csv")
+        
+        # Find the last known year for the boundary line
+        last_year = supreme_df['Year'].max()
 
         fig_forecast = px.line(
             forecast,
@@ -551,7 +435,7 @@ if st.button("Run Simulation"):
         )
 
         fig_forecast.add_vline(
-            x=pd.Timestamp(str(last_year)),
+            x=f"{last_year}-01-01",
             line_width=2,
             line_dash="dash",
             line_color="red"
