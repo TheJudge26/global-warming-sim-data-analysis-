@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import pycountry_convert as pc
 import numpy as np
 from src.config import CONTINENTS
+from sklearn.preprocessing import MinMaxScaler
 from src.api_service import get_live_country_data
 
 # =========================================================
@@ -146,26 +147,9 @@ if st.button("🚀 Run AI Simulation"):
 
         country_name = country_name_input
         country_code = COUNTRY_TO_ISO[country_name]
-        country_continent = get_continent(country_name)
-
-       # 🚀 FIX: Production-grade API error handling
-        # 🚀 FIX: Production-grade API error handling
-        try:
-            live_df = fetch_live_data_cached(country_code)
-        except Exception as e:
-            st.warning(f"⚠️ Live API unavailable. Using historical baseline data. ({e})")
-            live_df = pd.DataFrame()
 
         # Query history exactly once
         country_history = supreme_df[supreme_df['iso_code'] == country_code]
-
-        # Safely extract population
-        if not live_df.empty and 'Population' in live_df.columns:
-            country_pop = live_df['Population'].iloc[0]
-        elif not country_history.empty:
-            country_pop = country_history.sort_values('Year').iloc[-1]['Population']
-        else:
-            country_pop = 10_000_000 # Ultimate safety fallback
         
         # --- ROBUST FALLBACK FOR ALL 3 GASES ---
         if not country_history.empty:
@@ -372,7 +356,7 @@ if not importance_df.empty:
 # =================================================
 # COUNTRY SAFETY RANKING
 # =================================================
-from sklearn.preprocessing import MinMaxScaler
+
 
 st.subheader("🌍 Global Climate Safety Ranking")
 
@@ -385,10 +369,10 @@ ranking_df = supreme_df.groupby(
     "Total_GHG": "mean"
 })
 
-# 🚀 FIX: Scale the features to [0, 1] so the weights are actually applied fairly!
+# 🚀 CRITICAL FIX: Rename the local scaler to avoid overwriting the global ML scaler!
 cols = ['CO2_Emissions', 'Total_GHG', 'Average_Temperature']
-scaler = MinMaxScaler()
-ranking_df[cols] = scaler.fit_transform(ranking_df[cols])
+ranking_scaler = MinMaxScaler()
+ranking_df[cols] = ranking_scaler.fit_transform(ranking_df[cols])
 
 # Calculate the true weighted risk score
 ranking_df["risk_score"] = (
