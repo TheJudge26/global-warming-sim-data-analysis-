@@ -72,7 +72,7 @@ nn_model, scaler = load_models()
 def load_dataset():
     try:
         df = pd.read_csv("data/processed/supreme_dataset.csv")
-        # 🚀 FIX: Compute continents ONCE inside the cache!
+        
         df["continent"] = df["Real_Country_Name"].apply(get_continent)
         return df
     except FileNotFoundError:
@@ -112,10 +112,10 @@ st.markdown("### 🌍 Select Simulation Target")
 col1, col2 = st.columns(2)
         
 with col1:
-    # 🚀 FIX: Move Region selector FIRST
+    
     region = st.selectbox("Select Region Filter", ["Global"] + CONTINENTS)
     
-    # 🚀 FIX: Filter the Country dropdown based on the Region!
+    
     if region == "Global":
         filtered_countries = SUPPORTED_COUNTRIES
     else:
@@ -148,10 +148,10 @@ if st.button("🚀 Run AI Simulation"):
         country_name = country_name_input
         country_code = COUNTRY_TO_ISO[country_name]
 
-        # Query history exactly once
+        
         country_history = supreme_df[supreme_df['iso_code'] == country_code]
         
-        # --- ROBUST FALLBACK FOR ALL 3 GASES ---
+        
         if not country_history.empty:
             latest_row = country_history.sort_values('Year').iloc[-1]
             hist_pop = latest_row['Population']
@@ -163,16 +163,14 @@ if st.button("🚀 Run AI Simulation"):
             per_capita_ch4 = 0
             per_capita_n2o = 0
 
-        # ---------------------------------------------------------
-        # 🚀 POLICY FIX: Target all GHGs, not just CO2
-        # ---------------------------------------------------------
+       
         if ev_policy: 
             per_capita_co2 *= 0.80 
-            per_capita_ch4 *= 0.95 # EVs slightly reduce industrial methane
+            per_capita_ch4 *= 0.95 
         if tax_policy: 
             per_capita_co2 *= 0.90
-            per_capita_ch4 *= 0.90 # Carbon tax impacts agriculture/waste
-            per_capita_n2o *= 0.90 # Carbon tax impacts fertilizers
+            per_capita_ch4 *= 0.90 
+            per_capita_n2o *= 0.90 
 
         global_population_2026 = 8000000000
         
@@ -180,7 +178,7 @@ if st.button("🚀 Run AI Simulation"):
         ai_ch4_emissions = per_capita_ch4 * global_population_2026
         ai_n2o_emissions = per_capita_n2o * global_population_2026
         
-        # 🚀 FIX: Convert to Gigatonnes (Gt) for readability
+        
         display_gt = ai_co2_emissions / 1000 
 
         years_to_simulate = target_year - 2026
@@ -211,9 +209,6 @@ if st.button("🚀 Run AI Simulation"):
         prediction = future_predictions[0]
         risk = get_risk_level(prediction)
 
-        # ---------------------------------------------------------
-        # 🚀 UNCERTAINTY FIX: The Honest Extrapolation Penalty
-        # ---------------------------------------------------------
         years_beyond_target = max(0, target_year - last_year)
         target_penalty = 0.02 * (years_beyond_target / 10)
         honest_target_std = future_std[0] + target_penalty
@@ -254,9 +249,6 @@ if st.button("🚀 Run AI Simulation"):
                 st.success(f"🌤️ Safe Zone: +{prediction:.2f}°C")
         
         with col2:
-            # ---------------------------------------------------------
-            # 🚀 SEA LEVEL FIX: IPCC AR6 Linear Interpolation
-            # ---------------------------------------------------------
             ipcc_temps = [1.0, 1.5, 2.0, 4.0]
             ipcc_sea_levels = [0.1, 0.3, 0.5, 1.0]
             sea_level_rise = np.interp(prediction, ipcc_temps, ipcc_sea_levels)
@@ -292,7 +284,7 @@ if st.button("🚀 Run AI Simulation"):
             
             future_preds, base_std = nn_model.predict(X_future_scaled, return_std=True)
             
-            # Apply dynamic penalty to the whole timeline!
+          
             years_beyond = np.array(future_years) - last_year
             timeline_penalty = 0.02 * (years_beyond / 10)
             honest_timeline_std = base_std + timeline_penalty
@@ -370,21 +362,21 @@ ranking_df = supreme_df.groupby(
     "Total_GHG": "mean"
 })
 
-# 🚀 CRITICAL FIX: Rename the local scaler to avoid overwriting the global ML scaler!
+
 cols = ['CO2_Emissions', 'Total_GHG', 'Average_Temperature']
 ranking_scaler = MinMaxScaler()
 ranking_df[cols] = ranking_scaler.fit_transform(ranking_df[cols])
 
-# Calculate the true weighted risk score
+
 ranking_df["risk_score"] = (
     ranking_df["CO2_Emissions"] * 0.4 +
     ranking_df["Total_GHG"] * 0.3 +
     ranking_df["Average_Temperature"] * 0.3
 )
 
-# Convert to a clean 0-100 scale for UI readability
+
 ranking_df["risk_score"] = (ranking_df["risk_score"] * 100).round(2)
-ranking_df = ranking_df.sort_values("risk_score") # Lowest risk (safest) at the top
+ranking_df = ranking_df.sort_values("risk_score") 
 
 st.dataframe(ranking_df.head(10))
 # =================================================
