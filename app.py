@@ -328,6 +328,13 @@ if st.button("🚀 Run AI Simulation"):
                 yaxis_title="Temp Anomaly (°C)",
                 hovermode="x unified"
             )
+
+            st.info(
+                "**Extrapolation Penalty**\n\n"
+                "A specialized penalty is applied when features drift outside known historical bounds, "
+                "forcing wider intervals to prevent false precision.", 
+                icon="⚠️"
+            )
             
             st.plotly_chart(fig_forecast, use_container_width=True)
 # =================================================
