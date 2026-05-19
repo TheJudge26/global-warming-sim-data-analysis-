@@ -14,12 +14,12 @@ from src.api_service import get_live_country_data
 # =========================================================
 
 st.set_page_config(
-    page_title="Supreme Climate AI",
+    page_title="Supreme Climate ",
     page_icon="🌍",
     layout="wide"
 )
 
-st.title("🌍 Live Climate AI Predictor")
+st.title("🌍 Live Anomaly Predictor")
 st.write("Select a country to simulate a world living exactly like that country.")
 
 st.markdown("""
@@ -124,14 +124,14 @@ with col1:
         
     country_name_input = st.selectbox("Select Country to Mimic", filtered_countries)
     
-    st.markdown("### 🕰️ The Time Machine")
+    st.markdown("###  The Time Machine")
     target_year = st.slider(
         "Simulate forward to year:", 
         min_value=2026, max_value=2100, value=2036, step=1
     )
     
 with col2:
-    st.markdown("### 🌱 Climate Policy Toggles")
+    st.markdown("###  Climate Policy Toggles")
     st.write("Apply global policies to see if we can beat the AI prediction:")
     ev_policy = st.checkbox("🔋 Global EV Revolution (-20% Emissions)")
     tax_policy = st.checkbox("🏭 Aggressive Carbon Tax (-10% Emissions)")
@@ -141,7 +141,7 @@ with col2:
 # MAIN SIMULATION
 # =================================================
 
-if st.button("🚀 Run AI Simulation"):
+if st.button(" Run Simulation"):
 
     with st.spinner(f"📡 Accessing satellite data for {country_name_input}..."):
 
@@ -184,7 +184,7 @@ if st.button("🚀 Run AI Simulation"):
         years_to_simulate = target_year - 2026
         if years_to_simulate < 1: years_to_simulate = 1
 
-        st.info(f"🔍 **Simulation:** If the world acts like **{country_code}** until {target_year}, emitting **{display_gt:.1f} Gt of CO₂ per year**...")
+        st.info(f" **Simulation:** If the world acts like **{country_code}** until {target_year}, emitting **{display_gt:.1f} Gt of CO₂ per year**...")
         
         last_year = int(supreme_df['Year'].max())
         if 'Cumulative_CO2' in supreme_df.columns:
@@ -214,8 +214,8 @@ if st.button("🚀 Run AI Simulation"):
         honest_target_std = future_std[0] + target_penalty
 
         st.markdown("---")
-        st.subheader("🤖 AI Global Temperature Prediction")
-        st.caption("🧠 **Model Confidence (Historical Testing):** Training MAE (in-sample) of **±0.12°C**")
+        st.subheader(" Global Temperature Prediction")
+        st.caption(" **Model Confidence (Historical Testing):** Training MAE (in-sample) of **±0.12°C**")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -254,11 +254,11 @@ if st.button("🚀 Run AI Simulation"):
             sea_level_rise = np.interp(prediction, ipcc_temps, ipcc_sea_levels)
             
             if sea_level_rise > 0.5:
-                st.warning(f"🌊 **Doomsday Metric:** Expect roughly **{sea_level_rise:.2f} meters** of sea-level rise. Coastal cities like Miami and Jakarta will face severe flooding.")
+                st.warning(f"🌊 **Coastal Impact Projection:** Expect roughly **{sea_level_rise:.2f} meters** of sea-level rise...")
             elif sea_level_rise >= 0.3:
-                st.info(f"🌊 **Doomsday Metric:** Expect **{sea_level_rise:.2f} meters** of sea-level rise. Coastal erosion expected.")
+                st.info(f"🌊 **Coastal Impact Projection:** Expect **{sea_level_rise:.2f} meters** of sea-level rise...")
             else:
-                st.success(f"🌊 **Doomsday Metric:** Limited to **{sea_level_rise:.2f} meters**. Sea levels remain relatively manageable.")
+                st.success(f"🌊 **Coastal Impact Projection:** Limited to **{sea_level_rise:.2f} meters**...")
 
         st.markdown("---")
         st.subheader(f"📈 Simulated Trajectory: {country_name} Path")
@@ -342,7 +342,7 @@ if st.button("🚀 Run AI Simulation"):
 # =================================================
 
 st.markdown("---")
-st.subheader("🔍 What is driving the prediction?")
+st.subheader(" What is driving the prediction?")
 
 if not importance_df.empty:
     fig_imp = px.bar(
