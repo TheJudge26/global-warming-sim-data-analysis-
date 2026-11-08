@@ -3,3 +3,6 @@ pandas
 scikit-learn
 requests
 joblib
+plotly
+pycountry-convert
+numpy
